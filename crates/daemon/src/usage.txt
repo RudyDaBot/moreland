@@ -25,6 +25,8 @@ OPTIONS
                         required on labwc, which cannot create one and must
                         be pointed at an existing headless output
     --show-cursor       composite the mouse cursor into the stream
+                        [default: on for KDE, off elsewhere]
+    --hide-cursor       leave the cursor out of the stream
 
     --once              stream one session, then exit
     --seconds <N>       stop after N seconds (implies --once and --stats)

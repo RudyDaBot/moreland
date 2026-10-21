@@ -23,6 +23,8 @@ struct Args {
     config: session::Config,
     /// Whether `--fps` was passed, so a compositor default can apply otherwise.
     fps_given: bool,
+    /// Whether --show-cursor / --hide-cursor was passed.
+    cursor_given: bool,
     once: bool,
     seconds: Option<u64>,
 }
@@ -31,6 +33,7 @@ fn parse_args() -> Args {
     let mut config = session::Config::default();
     let mut once = false;
     let mut fps_given = false;
+    let mut cursor_given = false;
     let mut seconds = None;
     let (mut width, mut height) = (None, None);
 
@@ -66,7 +69,14 @@ fn parse_args() -> Args {
                     config.output_name = name;
                 }
             }
-            "--show-cursor" => config.paint_cursor = true,
+            "--show-cursor" => {
+                config.paint_cursor = true;
+                cursor_given = true;
+            }
+            "--hide-cursor" => {
+                config.paint_cursor = false;
+                cursor_given = true;
+            }
             "--once" => once = true,
             "--stats" => config.stats = true,
             "--seconds" => {
@@ -95,6 +105,7 @@ fn parse_args() -> Args {
     Args {
         config,
         fps_given,
+        cursor_given,
         once,
         seconds,
     }
@@ -124,6 +135,11 @@ fn main() -> Result<()> {
     // an explicit --fps is always honoured.
     if compositor == output::Compositor::Kwin && !args.fps_given {
         args.config.fps = 60;
+    }
+    // A second monitor with no pointer on it is unusable, and KWin composites
+    // the cursor into the stream cheaply, so show it unless told not to.
+    if compositor == output::Compositor::Kwin && !args.cursor_given {
+        args.config.paint_cursor = true;
     }
 
     let shutdown = Arc::new(AtomicBool::new(false));
