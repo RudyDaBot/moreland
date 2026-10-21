@@ -347,7 +347,9 @@ impl VirtualOutput {
                 return Ok(Self::new(compositor, name));
             }
             #[cfg(feature = "plasma")]
-            Compositor::Kwin => return Self::create_kwin(name, width, height, x, y, paint_cursor),
+            Compositor::Kwin => {
+                return Self::create_kwin(name, width, height, refresh, x, y, paint_cursor)
+            }
             Compositor::Hyprland => {
                 let saved_states = hyprland_monitor_state()
                     .context("saving Hyprland monitor state")?;
@@ -407,13 +409,15 @@ impl VirtualOutput {
 
     /// Create the monitor through `zkde_screencast_unstable_v1` and place it.
     ///
-    /// KWin ignores a requested refresh rate here — the stream runs at
-    /// whatever the compositor produces — so `refresh` is not passed on.
+    /// The protocol request carries no refresh rate, and KWin gives the output
+    /// a single 60 Hz mode. Anything else is added afterwards as a custom mode
+    /// through `kscreen-doctor` and selected.
     #[cfg(feature = "plasma")]
     fn create_kwin(
         name: &str,
         width: u32,
         height: u32,
+        refresh: u32,
         x: i32,
         y: i32,
         paint_cursor: bool,
@@ -440,6 +444,24 @@ impl VirtualOutput {
         let target = format!("output.Virtual-{name}.position.{x},{y}");
         if let Err(e) = run("kscreen-doctor", &[&target]) {
             tracing::warn!("could not position the output ({target}): {e:#}");
+        }
+
+        if refresh != 60 {
+            // Reduced blanking keeps the pixel clock low; the resulting rate
+            // lands a hair under the request (90 -> 89.93 Hz), which
+            // `kscreen-doctor ... mode.WxH@R` still matches.
+            let add = format!(
+                "output.Virtual-{name}.addCustomMode.{width}.{height}.{}.reduced",
+                refresh * 1000
+            );
+            let select = format!("output.Virtual-{name}.mode.{width}x{height}@{refresh}");
+            let applied = run("kscreen-doctor", &[&add])
+                .and_then(|_| run("kscreen-doctor", &[&select]));
+            if let Err(e) = applied {
+                tracing::warn!(
+                    "could not set {refresh} Hz on the output; staying at 60 Hz: {e:#}"
+                );
+            }
         }
 
         let mut output = Self::new(Compositor::Kwin, name);
