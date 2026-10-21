@@ -25,7 +25,8 @@ pub struct Config {
     /// Cap on the auto-detected width, to keep encoder load sane.
     pub max_width: u32,
     pub fps: u32,
-    pub bitrate_kbps: u32,
+    /// `None` lets each pipeline pick its own default.
+    pub bitrate_kbps: Option<u32>,
     pub position_x: i32,
     pub position_y: i32,
     pub output_name: String,
@@ -47,7 +48,7 @@ impl Default for Config {
             // bytes, since smaller inter-frame deltas compress better. 144
             // saturates: 163 of 1764 frames unacked and a 208 ms stall.
             fps: 90,
-            bitrate_kbps: 20_000,
+            bitrate_kbps: None,
             // Below a primary at 0x0, starting at y = 1080. This assumes the
             // primary is no taller than 1080px — on a taller display the
             // virtual output would overlap it rather than sit below. Override
@@ -102,7 +103,7 @@ impl ExtPipeline {
             width: capture.width,
             height: capture.height,
             framerate: config.fps,
-            bitrate_kbps: config.bitrate_kbps,
+            bitrate_kbps: config.bitrate_kbps.unwrap_or(20_000),
             fourcc: capture.format,
             modifier: capture.modifier.unwrap_or(0),
             ..Default::default()
@@ -187,7 +188,9 @@ impl PlasmaPipeline {
         let name = name.trim_start_matches("VideoFormat::");
         let mut encoder_config =
             MemoryEncoderConfig::new(backend, format.width, format.height, config.fps);
-        encoder_config.bitrate_kbps = config.bitrate_kbps;
+        if let Some(bitrate) = config.bitrate_kbps {
+            encoder_config.bitrate_kbps = bitrate;
+        }
         let encoder = Arc::new(MemoryEncoder::new(&encoder_config, name)?);
 
         Ok(Self {
