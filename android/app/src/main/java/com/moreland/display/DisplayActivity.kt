@@ -5,6 +5,7 @@ package com.moreland.display
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -24,6 +25,7 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var surfaceView: SurfaceView
     private lateinit var status: TextView
     private var stream: VideoStream? = null
+    private var input: InputForwarder? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,9 +48,25 @@ class DisplayActivity : Activity(), SurfaceHolder.Callback {
         root.addView(status, FrameLayout.LayoutParams(MATCH, WRAP))
         setContentView(root)
 
-        stream = VideoStream().also { it.start() }
+        stream = VideoStream().also { s ->
+            s.start()
+            input = InputForwarder { s.send(it) }
+        }
         surfaceView.holder.addCallback(this)
         goImmersive()
+    }
+
+    // Touch and pen go to the host whatever view they land on, so the status
+    // text or a flashing system bar can never swallow them.
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        input?.forward(ev, surfaceView.width, surfaceView.height)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    // A pen hovering above the glass arrives as a generic motion event.
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        input?.forward(ev, surfaceView.width, surfaceView.height)
+        return super.dispatchGenericMotionEvent(ev)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
