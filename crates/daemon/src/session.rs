@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use transport::{adb, stream_header, Sender};
 
-use crate::output::VirtualOutput;
+use crate::output::{Placement, Side, VirtualOutput};
 use crate::touch;
 
 const APP_PACKAGE: &str = "com.moreland.display";
@@ -28,8 +28,12 @@ pub struct Config {
     pub fps: u32,
     /// `None` lets each pipeline pick its own default.
     pub bitrate_kbps: Option<u32>,
-    pub position_x: i32,
-    pub position_y: i32,
+    /// Explicit corner of the virtual output. When neither is set the output
+    /// goes against `side` of the main screen instead.
+    pub position_x: Option<i32>,
+    pub position_y: Option<i32>,
+    /// Edge of the main screen to sit against; right when unset.
+    pub side: Option<Side>,
     pub output_name: String,
     /// Composite the mouse cursor into the streamed frames.
     pub paint_cursor: bool,
@@ -52,13 +56,9 @@ impl Default for Config {
             // saturates: 163 of 1764 frames unacked and a 208 ms stall.
             fps: 90,
             bitrate_kbps: None,
-            // Below a primary at 0x0, starting at y = 1080. This assumes the
-            // primary is no taller than 1080px — on a taller display the
-            // virtual output would overlap it rather than sit below. Override
-            // with `--position`/`--position-y` if that does not hold for your
-            // layout.
-            position_x: 0,
-            position_y: 1080,
+            position_x: None,
+            position_y: None,
+            side: None,
             output_name: capture::VIRTUAL_OUTPUT_NAME.to_string(),
             paint_cursor: false,
             palm_rejection: true,
@@ -404,13 +404,19 @@ pub fn run(serial: &str, config: &Config, shutdown: &AtomicBool) -> Result<()> {
         }
     };
 
+    // Explicit coordinates win. Otherwise sit against an edge of the main
+    // screen, on the right unless told differently. A missing axis of a partial
+    // pair keeps the legacy default (0 across, 1080 down).
+    let placement = match (config.position_x, config.position_y) {
+        (None, None) => Placement::Side(config.side.unwrap_or(Side::Right)),
+        (x, y) => Placement::Coords(x.unwrap_or(0), y.unwrap_or(1080)),
+    };
     let mut output = VirtualOutput::create(
         &config.output_name,
         width,
         height,
         config.fps,
-        config.position_x,
-        config.position_y,
+        placement,
         config.paint_cursor,
     )?;
     if output.applied_mode() {
